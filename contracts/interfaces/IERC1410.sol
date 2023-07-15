@@ -9,10 +9,10 @@ pragma solidity ^0.8.0;
 interface IERC1410 {
 
     // Token Information
-    function balanceOf(address _tokenHolder) external view returns (uint256);
+    //function balanceOf(address _tokenHolder) external view returns (uint256);
     function balanceOfByPartition(bytes32 _partition, address _tokenHolder) external view returns (uint256);
     function partitionsOf(address _tokenHolder) external view returns (bytes32[] memory);
-    function totalSupply() external view returns (uint256);
+    // function totalSupply() external view returns (uint256);
 
     // Token Transfers
     function transferByPartition(bytes32 _partition, address _to, uint256 _value, bytes memory _data) external returns (bytes32);
