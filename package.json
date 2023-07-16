@@ -4,14 +4,16 @@
   "description": "Digitoken your bridge from Cefi to Defi",
   "main": "index.js",
   "scripts": {
-    "test": "npx hardhat test",
+    "test": "npx hardhat clean & npx hardhat compile & npx hardhat test",
     "compile": "npx hardhat compile",
-    "node": "npx hardhat node"
+    "node": "npx hardhat node",
+    "prettier": "prettier --write --plugin=prettier-plugin-solidity 'contracts/**/*.sol'",
+    "lint": "prettier --list-different --plugin=prettier-plugin-solidity 'contracts/**/*.sol'"
   },
   "repository": "git+ssh://git@github.com/erionrb/digitoken.git",
   "keywords": [
     "hardhat",
-    "solity",
+    "solidity",
     "polygon"
   ],
   "author": "erionrb",
@@ -35,12 +37,15 @@
     "ethers": "^6.6.3",
     "hardhat": "^2.17.0",
     "hardhat-gas-reporter": "^1.0.9",
+    "prettier": "^3.0.0",
     "solidity-coverage": "^0.8.4",
     "ts-node": ">=8.0.0",
     "typechain": "^8.2.0",
     "typescript": ">=4.5.0"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^4.9.2"
+    "@nomiclabs/hardhat-ethers": "^2.2.3",
+    "@openzeppelin/contracts": "^4.9.2",
+    "prettier-plugin-solidity": "^1.1.3"
   }
 }
