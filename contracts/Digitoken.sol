@@ -1,35 +1,50 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
-import { IERC1410 } from "./interfaces/IERC1410.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
-import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
 import { Counters } from "@openzeppelin/contracts/utils/Counters.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
+import { IERC1410 } from "./interfaces/IERC1410.sol";
 import { console } from "hardhat/console.sol";
+import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 contract Digitoken is IERC1410, ERC20, Ownable, AccessControl {
     using Counters for Counters.Counter;
     Counters.Counter private _burnerCounter;
 
-    /**
-     * Access Roles
-     */
+    using ECDSA for bytes32;
+
+    // Access Roles ____________________________________________________________________________________________
     bytes32 public constant MINTER = keccak256("MINTER_ROLE");
     bytes32 public constant TRANSFER_AGENT = keccak256("TRANSFER_AGENT_ROLE");
     bytes32 public constant WHITE_LISTED = keccak256("WHITE_LISTED");
     bytes32 public BURNER;
 
-    constructor() ERC20("Digitoken", "DIGI") {
+    // Partition compatibility _________________________________________________________________________________
+    mapping(bytes => Certificate) private _certificates;
+    mapping(bytes32 => uint256) private _totalSupplyByPartition;
+    mapping(bytes32 => mapping(address => uint256)) private _partitions;
+    mapping(bytes32 => mapping(address => mapping(address => uint256))) private _partitionAllowances;
+
+    // ERC-20 compatibility ____________________________________________________________________________________
+    address immutable _certifier;
+
+    constructor(string memory name, string memory symbol, address certifier) ERC20(name, symbol) {
+        _certifier = certifier;
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(WHITE_LISTED, msg.sender);
         setupBurner();
     }
 
-    /**
-     *  Modifiers
-     */
+    struct Certificate {
+        string url;
+        bytes32 digest;
+        bytes signature;
+    }
+
+    // Modifiers _______________________________________________________________________________________________
     modifier onlyAdmin() {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Sender is not an admin");
         _;
@@ -47,8 +62,8 @@ contract Digitoken is IERC1410, ERC20, Ownable, AccessControl {
         _;
     }
 
-    modifier onlyTransferAgent(address to) {
-        address from = msg.sender;
+    modifier onlyWhiteListed(address to) {
+        address from = _msgSender();
         require(hasRoleOrAdmin(WHITE_LISTED, to), "Recipient has not whitelisted");
         require(hasRoleOrAdmin(TRANSFER_AGENT, to), "Recipient is not a transfer agent");
 
@@ -57,18 +72,7 @@ contract Digitoken is IERC1410, ERC20, Ownable, AccessControl {
         _;
     }
 
-    /**
-     * Functions
-     */
-
-    function mint(address to, uint256 amount) public onlyMinter {
-        _mint(to, amount);
-    }
-
-    function transfer(address to, uint256 amount) public override onlyTransferAgent(to) returns (bool) {
-        super.transfer(to, amount);
-        return true;
-    }
+    // partition functions _________________________________________________________________________________
 
     function setupBurner() public onlyAdmin {
         BURNER = keccak256(abi.encodePacked("BURNER_ROLE_", Strings.toString(_burnerCounter.current())));
@@ -117,8 +121,28 @@ contract Digitoken is IERC1410, ERC20, Ownable, AccessControl {
         // TODO: implement me
     }
 
-    function issueByPartition(bytes32 _partition, address _tokenHolder, uint256 _value, bytes memory _data) external {
-        // TODO: implement me
+    function issueByPartition(bytes32 _partition, address _tokenHolder, uint256 _value, bytes memory _data) external onlyMinter {
+        Certificate memory cert = extractCertificate(_data);
+        require(verifyCertificate(cert), "Invalid certificate");
+
+        _partitions[_partition][_tokenHolder] += _value;
+        _totalSupplyByPartition[_partition] += _value;
+        _certificates[cert.signature] = cert;
+
+        super._mint(_tokenHolder, _value);
+
+        emit IssuedByPartition(_partition, msg.sender, _tokenHolder, _value, _data, cert.signature);
+    }
+
+    function extractCertificate(bytes memory _data) internal pure returns (Certificate memory) {
+        (string memory url, bytes32 digest, bytes memory signature) = abi.decode(_data, (string, bytes32, bytes));
+        return Certificate(url, digest, signature);
+    }
+
+    function verifyCertificate(Certificate memory cert) internal view returns (bool) {
+        bytes32 digest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", cert.digest));
+        address signer = ECDSA.recover(digest, cert.signature);
+        return signer == _certifier;
     }
 
     function redeemByPartition(bytes32 _partition, uint256 _value, bytes memory _data) external {
@@ -132,4 +156,8 @@ contract Digitoken is IERC1410, ERC20, Ownable, AccessControl {
     function hasRoleOrAdmin(bytes32 role, address account) internal view returns (bool) {
         return (hasRole(role, account)) || hasRole(DEFAULT_ADMIN_ROLE, account);
     }
+
+    // ERC-20 functions _________________________________________________________________________________
+    
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual override onlyWhiteListed(to) {}
 }
