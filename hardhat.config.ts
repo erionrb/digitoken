@@ -5,6 +5,7 @@ dotenv.config();
 
 const PRIVATE_KEY = "" + process.env.PRIVATE_KEY;
 const MUMBAI_RPC = "" + process.env.MUMBAI_RPC;
+const SCAN_KEY = "" + process.env.SCAN_KEY;
 
 const config: HardhatUserConfig = {
     solidity: "0.8.19",
@@ -13,6 +14,11 @@ const config: HardhatUserConfig = {
         mumbai: {
             url: MUMBAI_RPC,
             accounts: [PRIVATE_KEY],
+        },
+    },
+    etherscan: {
+        apiKey: {
+            polygonMumbai: SCAN_KEY,
         },
     },
 };
