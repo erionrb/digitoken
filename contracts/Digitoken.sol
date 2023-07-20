@@ -6,11 +6,12 @@ import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol"
 import { Counters } from "@openzeppelin/contracts/utils/Counters.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { IERC1410 } from "./interfaces/IERC1410.sol";
+import { IERC1643 } from "./interfaces/IERC1643.sol";
 import { console } from "hardhat/console.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
-contract Digitoken is IERC1410, ERC20, Ownable, AccessControl {
+contract Digitoken is IERC1410, IERC1643, ERC20, Ownable, AccessControl {
     using Counters for Counters.Counter;
     Counters.Counter private _burnerCounter;
     Counters.Counter private _expectedNonce;
@@ -31,10 +32,13 @@ contract Digitoken is IERC1410, ERC20, Ownable, AccessControl {
     mapping(bytes32 => mapping(address => mapping(address => uint256))) private _partitionAllowances;
 
     // ERC-20 compatibility ____________________________________________________________________________________
-    address immutable _certifier;
-    
+    address private _certifier;
 
-    constructor(string memory name, string memory symbol, address certifier) ERC20(name, symbol) {
+    // Document Management ____________________________________________________________________________________
+    mapping(bytes32 => Document) private _documents;
+    bytes32[] private _documentNames;
+
+    constructor(string memory _name, string memory _symbol, address certifier) ERC20(_name, _symbol) {
         _certifier = certifier;
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(WHITE_LISTED, msg.sender);
@@ -50,6 +54,12 @@ contract Digitoken is IERC1410, ERC20, Ownable, AccessControl {
         string url;
         bytes32 digest;
         bytes signature;
+    }
+
+    struct Document {
+        string uri;
+        bytes32 documentHash;
+        uint timestamp;
     }
 
     // events _________________________________________________________________________________________________
@@ -91,8 +101,8 @@ contract Digitoken is IERC1410, ERC20, Ownable, AccessControl {
         _burnerCounter.increment();
     }
 
-    function balanceOfByPartition(bytes32 _partition, address _tokenHolder) external view returns (uint256) {
-        return _partitions[_partition][_tokenHolder];
+    function balanceOfByPartition(bytes32 partition, address tokenHolder) external view returns (uint256) {
+        return _partitions[partition][tokenHolder];
     }
 
     function partitionsOf(address _tokenHolder) external view returns (bytes32[] memory) {
@@ -122,6 +132,8 @@ contract Digitoken is IERC1410, ERC20, Ownable, AccessControl {
 
         super._mint(_tokenHolder, _value);
         _expectedNonce.increment();
+
+        this.setDocument(cert.digest, cert.url, cert.digest);
 
         emit IssuedByPartition(_partition, msg.sender, _tokenHolder, _value, _data, cert.signature);
     }
@@ -222,5 +234,33 @@ contract Digitoken is IERC1410, ERC20, Ownable, AccessControl {
                 break;
             }
         }
+    }
+
+    // Document functions _________________________________________________________________________________
+    function getDocument(bytes32 name) external view returns (string memory, bytes32, uint256) {
+        Document memory doc = _documents[name];
+        return (doc.uri, doc.documentHash, doc.timestamp);
+    }
+
+    function setDocument(bytes32 name, string memory uri, bytes32 documentHash) external {
+        _documents[name] = Document(uri, documentHash, block.timestamp);
+        _documentNames.push(name);
+    }
+
+    function removeDocument(bytes32 _name) external {
+        delete _documents[_name];
+        for (uint256 i = 0; i < _documentNames.length; i++) {
+            if (_documentNames[i] == _name) {
+                if (i != _documentNames.length - 1) {
+                    _documentNames[i] = _documentNames[_documentNames.length - 1];
+                }
+                _documentNames.pop();
+                break;
+            }
+        }
+    }
+
+    function getAllDocuments() external view returns (bytes32[] memory) {
+        return _documentNames;
     }
 }
